@@ -53,16 +53,26 @@ app.get('/callback', async (req, res) => {
 
         const { access_token, refresh_token, id_token } = tokenResponse.data;
 
-        // Store tokens in session or cookies
-        // req.session.accessToken = access_token;
-        // req.session.refreshToken = refresh_token;
-        // req.session.idToken = id_token;
+        // Render the callback view with the authorization code
+        res.render('callback', { code: code });
 
-        res.send('Authentication successful!');
     } catch (error) {
         console.error('Error exchanging code for tokens:', error.response ? error.response.data : error.message);
         res.status(500).send('Authentication failed');
     }
+});
+
+// Logout route
+app.get('/logout', (req, res) => {
+    const keycloakLogoutUrl = `${process.env.KEYCLOAK_URL}/realms/${process.env.KEYCLOAK_REALM}/protocol/openid-connect/logout`;
+    const redirectUri = encodeURIComponent('http://localhost:1337/'); // Redirect back to home after logout
+
+    // Clear session or tokens
+    // req.session.destroy();
+
+    const logoutUrl = `${keycloakLogoutUrl}?post_logout_redirect_uri=${redirectUri}&client_id=${process.env.KEYCLOAK_CLIENT_ID}`;
+    
+    res.redirect(logoutUrl);
 });
 
 // Start the server
