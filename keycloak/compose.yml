@@ -30,6 +30,7 @@ services:
       - start-dev
     volumes:
       - keycloak_data:/opt/keycloak/data
+      - ./pehchan-theme:/opt/keycloak/themes/pehchan
     networks:
       - keycloak-network
 

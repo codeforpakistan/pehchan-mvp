@@ -26,19 +26,30 @@ p {
     margin-bottom: 20px;
 }
 
+
 .button {
-    display: inline-block;
-    background: #333;
-    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    background: #fff;
+    color: #363636;
     padding: 10px 20px;
     text-decoration: none;
     border-radius: 5px;
+    border: 1px solid #4caf50; /* Medium green color for border */
     transition: background 0.3s ease;
 }
 
 .button:hover {
-    background: #555;
+    background: #b3dcb5;
+    color: #fff;
 }
+
+.button-icon {
+    width: 24px;
+    height: 24px;
+    margin-right: 10px;
+}
+
 
 code {
     background-color: #f4f4f4;

@@ -1,0 +1,13 @@
+#kc-header {
+    background-color: #f8f9fa;
+    text-align: center;
+}
+
+#kc-header img {
+    max-width: 200px;
+    margin-top: 20px;
+}
+
+h1 {
+    color: #007bff;
+}
