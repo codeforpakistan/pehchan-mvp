@@ -1,0 +1,23 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=development
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_DB=pehchan
+      - POSTGRES_USER=pehchan_user
+      - POSTGRES_PASSWORD=pehchan_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

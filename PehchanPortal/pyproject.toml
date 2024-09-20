@@ -8,6 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11"
 flask = "^3.0.3"
+python-keycloak = "^4.4.0"
 
 
 [build-system]

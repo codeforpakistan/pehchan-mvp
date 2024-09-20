@@ -1,0 +1,90 @@
+services:
+  keycloak-db:
+    image: postgres:13
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    networks:
+      - pehchan-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: keycloak-db
+      DB_DATABASE: keycloak
+      DB_USER: keycloak 
+      DB_PASSWORD: password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin_password
+    ports:
+      - "8080:8080"
+    depends_on:
+      - keycloak-db
+    command:
+      - start-dev
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+      - ./keycloak/pehchan-theme:/opt/keycloak/themes/pehchan
+    networks:
+      - pehchan-network
+
+  pehchan-portal:
+    build:
+      context: ./PehchanPortal
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=development
+    volumes:
+      - ./PehchanPortal:/app
+    depends_on:
+      - pehchan-db
+    networks:
+      - pehchan-network
+
+  pehchan-db:
+    image: postgres:13
+    environment:
+      - POSTGRES_DB=pehchan
+      - POSTGRES_USER=pehchan_user
+      - POSTGRES_PASSWORD=pehchan_password
+    volumes:
+      - pehchan_postgres_data:/var/lib/postgresql/data
+    networks:
+      - pehchan-network
+
+  demo-government-portal:
+    build:
+      context: ./demo-government-portal
+      dockerfile: Dockerfile
+    ports:
+      - "1337:1337"
+    depends_on:
+      - keycloak
+    networks:
+      - pehchan-network
+
+  verisys:
+    build:
+      context: ./verisys
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - pehchan-network
+
+networks:
+  pehchan-network:
+    driver: bridge
+
+volumes:
+  keycloak_postgres_data:
+  keycloak_data:
+  pehchan_postgres_data:
