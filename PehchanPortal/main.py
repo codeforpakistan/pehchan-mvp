@@ -1,11 +1,17 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
-from database import init_db, add_user, get_user_by_email, verify_user, update_avatar
+from database import init_db, add_user, get_user_by_email, verify_user, update_avatar, update_user_profile, get_user_by_keycloak_id
 import re
-=import os
+import os
 from werkzeug.utils import secure_filename
 import requests
-from keycloak import KeycloakAdmin
-from keycloak import KeycloakOpenIDConnection
+from keycloak import KeycloakAdmin, KeycloakOpenIDConnection, KeycloakOpenID
+
+
+
+KEYCLOAK_URL = os.getenv('KEYCLOAK_URL', 'http://keycloak:8080')
+KEYCLOAK_CLIENT_ID = os.getenv('KEYCLOAK_CLIENT_ID', 'pportal')
+KEYCLOAK_CLIENT_SECRET = 'vB9uruPX8DGlglHFKVMGPwRrNE19NTrW'
+KEYCLOAK_REALM = os.getenv('KEYCLOAK_REALM', 'pehchan')
 
 keycloak_connection = KeycloakOpenIDConnection(
                         server_url=os.getenv('KEYCLOAK_URL', 'http://keycloak:8080'),
@@ -15,6 +21,16 @@ keycloak_connection = KeycloakOpenIDConnection(
                         client_id=os.getenv('KEYCLOAK_CLIENT_ID', 'pportal'),
                         client_secret_key='vB9uruPX8DGlglHFKVMGPwRrNE19NTrW',
                         verify=True)
+
+# Set up KeycloakOpenID instance
+keycloak_openid = KeycloakOpenID(
+    server_url="http://keycloak:8080",  # Access via service name inside Docker
+    client_id="pportal",
+    realm_name="pehchan",
+    client_secret_key="vB9uruPX8DGlglHFKVMGPwRrNE19NTrW"
+)
+
+
 
 
 keycloak_admin = KeycloakAdmin(connection=keycloak_connection)
@@ -29,10 +45,6 @@ keycloak_admin = KeycloakAdmin(connection=keycloak_connection)
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'  # In production, use a proper secret key
 
-KEYCLOAK_URL = os.getenv('KEYCLOAK_URL', 'http://keycloak:8080')
-KEYCLOAK_CLIENT_ID = os.getenv('KEYCLOAK_CLIENT_ID', 'pportal')
-KEYCLOAK_CLIENT_SECRET = 'vB9uruPX8DGlglHFKVMGPwRrNE19NTrW'
-KEYCLOAK_REALM = os.getenv('KEYCLOAK_REALM', 'pehchan')
 
 init_db()
 
@@ -110,27 +122,33 @@ def register():
             ]
         }
 
-        print('user data', user_data)
-
-        # Try creating the user in Keycloak
         try:
-            user_created =  keycloak_admin.create_user(user_data)#create_user_in_keycloak(user_data)
-            if user_created:
-                # also store in db
-                add_user(full_name, email, phone, cnic)
-                return jsonify({'success': True, 'message': 'Registration successful! Please log in.'})
-            else:
-                return jsonify({'success': False, 'message': 'Failed to register user in Keycloak'})
+            # Create the user in Keycloak
+            keycloak_admin.create_user(user_data)
+            
+            # Retrieve the user by email to get Keycloak's unique user ID
+            users = keycloak_admin.get_users({"email": email})
+            if not users:
+                return jsonify({'success': False, 'message': 'User not found in Keycloak'})
+            
+            keycloak_user_id = users[0]['id']  # Keycloak's unique user ID
+
+            # Also store the user in your database with the Keycloak user ID
+            add_user(full_name, email, phone, cnic, keycloak_user_id=keycloak_user_id)
+
+            return jsonify({'success': True, 'message': 'Registration successful! Please log in.'})
+
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)})
+
 
 
 # Login route
 @app.route('/login')
 def login():
-    keycloak_login_url = f'http://localhost:8080/realms/{KEYCLOAK_REALM}/protocol/openid-connect/auth'
+    keycloak_login_url = f'http://keycloak:8080/realms/{KEYCLOAK_REALM}/protocol/openid-connect/auth'
     client_id = KEYCLOAK_CLIENT_ID
-    redirect_uri = 'http://localhost:5002/dashboard'
+    redirect_uri = 'http://pechchan-mvp-pehchan-portal-1:5002/callback'
     state = os.urandom(8).hex()
     nonce = os.urandom(8).hex()
     response_type = 'code'
@@ -142,45 +160,83 @@ def login():
 
 @app.route('/dashboard')
 def dashboard():
+    # Ensure the user is logged in
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect('/login')
+
+    # Fetch the user from the database
+    user = get_user_by_keycloak_id(user_id)
+
+    if not user:
+        return "User not found", 404
+
+    # Render the dashboard with the user's profile
+    return render_template('dashboard.html', user=user)
+
+
+@app.route('/callback')
+def callback():
     code = request.args.get('code')
+    print('Code from Keyclock', code)
 
     if not code:
         return "Error: No authorization code returned from Keycloak", 400
 
-    # Exchange authorization code for tokens
-    token_url = f'{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token'
-    data = {
-        'grant_type': 'authorization_code',
-        'client_id': KEYCLOAK_CLIENT_ID,
-        'client_secret': KEYCLOAK_CLIENT_SECRET,
-        'code': code,
-        'redirect_uri': 'http://localhost:5002/dashboard'
-    }
-    
-    headers = {
-        'Content-Type': 'application/x-www-form-urlencoded'
-    }
+    try:
+        # Use python-keycloak to exchange the authorization code for tokens
+        token = keycloak_openid.token(
+            grant_type='authorization_code',
+            code=code,
+            redirect_uri='http://pechchan-mvp-pehchan-portal-1:5002/callback'
+        )
 
-    # Send request to Keycloak to get tokens
-    token_response = requests.post(token_url, data=data, headers=headers)
-    
-    if token_response.status_code != 200:
-        return f"Error exchanging code for tokens: {token_response.text}", 500
+        # Store tokens in session
+        session['access_token'] = token['access_token']
+        session['refresh_token'] = token['refresh_token']
+        session['id_token'] = token['id_token']
 
-    tokens = token_response.json()
+        # Print the access token to the console for verification
+        print(f"Access Token: {session['access_token']}")
 
-    # Store the tokens in the session (just for demonstration; adjust as per your needs)
-    session['access_token'] = tokens.get('access_token')
-    session['refresh_token'] = tokens.get('refresh_token')
-    session['id_token'] = tokens.get('id_token')
+        # Use the access token to get user info from Keycloak
+        user_info = keycloak_openid.userinfo(token=session['access_token'])
 
-    # Render callback view (You can modify to redirect elsewhere)
-    return render_template('dashboard.html', code=code)
+        keycloak_user_id = user_info['sub']  # Keycloak's unique user ID
+
+        # Store the user_id in the session for future use
+        session['user_id'] = keycloak_user_id
+
+        return redirect('/dashboard')
+
+    except Exception as e:
+        print(f"Error fetching tokens or user info: {str(e)}")
+        return f"Error fetching tokens or user info: {str(e)}", 500
+
+
+
+
 
 @app.route('/logout')
 def logout():
+    # Keycloak logout URL
+    keycloak_logout_url = f'http://keycloak:8080/realms/{KEYCLOAK_REALM}/protocol/openid-connect/logout'
+    
+    # Redirect URI after logging out from Keycloak
+    redirect_uri = 'http://pechchan-mvp-pehchan-portal-1:5002'  # Redirect back to home after logout
+    
+    # Construct the logout URL with post logout redirect URI and client ID
+    logout_url = f'{keycloak_logout_url}?post_logout_redirect_uri={redirect_uri}&client_id={KEYCLOAK_CLIENT_ID}'
+    
+    # Clear session or tokens in Flask
     session.pop('user_id', None)
-    return redirect(url_for('login'))
+    session.pop('access_token', None)
+    session.pop('refresh_token', None)
+    session.pop('id_token', None)
+    
+    # Redirect to Keycloak logout URL
+    return redirect(logout_url)
+
 
 
 @app.route('/upload_avatar', methods=['POST'])
