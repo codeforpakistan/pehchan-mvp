@@ -4,10 +4,9 @@
 
 {% block content %}
 <div class="dashboard-container">
-    <h2>Welcome, {{ user.full_name }}!</h2>
-    <p>Your CNIC: {{ user.cnic }}</p>
-    <p>Your Email: {{ user.email }}</p>
-    <p>Your Phone: {{ user.phone }}</p>
-    <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+    <h1>Login Successful</h1>
+    <p>Authorization Code: {{ code }}</p>
+    <a href="/">Go back to Home</a>
 </div>
 {% endblock %}
+a
